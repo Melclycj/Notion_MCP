@@ -2,11 +2,13 @@ import os
 import sys
 
 import uvicorn
+from dotenv import load_dotenv
 
-from notion import get_app
+from server import get_app
 
 
 def main() -> None:
+    load_dotenv()
     host = os.getenv("HOST", "127.0.0.1")
     port = int(os.getenv("PORT", "8443"))
     cert_file = os.getenv("HTTPS_CERT_FILE") or os.getenv("SSL_CERT_FILE")

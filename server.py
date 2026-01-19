@@ -1,18 +1,25 @@
-from __future__ import annotations
-
-from dataclasses import asdict
-import logging
-from typing import Any, Dict
-
-from mcp.server.fastmcp import FastMCP
+from fastapi import FastAPI
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from starlette.applications import Starlette
+from starlette.routing import Host
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse
 
+from notion_proxy import mcp_asgi
+from auth import InMemoryPrincipalStore, JWTAuthMiddleware, SupabaseJwksClient
+from contextlib import asynccontextmanager
 from notion_oauth import handle_callback, start_oauth
 
-# Initialize FastMCP server
-mcp = FastMCP("notion")
+import logging
+import os
+from typing import Any, Dict
+from dataclasses import asdict
+
+
+auth_app = FastAPI()
 logger = logging.getLogger("notion.oauth")
+principal_store = InMemoryPrincipalStore()
+jwks_client = SupabaseJwksClient()
 
 
 def _serialize_token(token: Any) -> Dict[str, Any]:
@@ -25,13 +32,13 @@ def _serialize_token(token: Any) -> Dict[str, Any]:
     return data
 
 
-@mcp.custom_route("/oauth/notion/start", methods=["GET"])
+@auth_app.get("/notion/oauth/start")
 async def notion_oauth_start(_: Request) -> RedirectResponse:
     result = start_oauth()
     return RedirectResponse(result["redirect_url"], status_code=302)
 
 
-@mcp.custom_route("/oauth/notion/callback", methods=["GET"])
+@auth_app.get("/notion/oauth/callback")
 async def notion_oauth_callback(request: Request) -> JSONResponse:
     code = request.query_params.get("code")
     state = request.query_params.get("state")
@@ -56,6 +63,39 @@ async def notion_oauth_callback(request: Request) -> JSONResponse:
         }
     )
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with mcp_asgi.router.lifespan_context(app):
+        yield
+mcp_host_app = FastAPI(lifespan=lifespan)
+mcp_host_app.mount("/", mcp_asgi)
+
+@mcp_host_app.get("/health")
+def health_mcp():
+    return {"ok": True, "service": "mcp"}
+
+mcp_host_app.add_middleware(
+    JWTAuthMiddleware,
+    jwks_client=jwks_client,
+    principal_store=principal_store,
+    public_paths=["/health"],
+)
+
+
+# -------------------------
+# Top-level host router
+# -------------------------
+app = Starlette(
+    routes=[
+        Host("auth.localhost", app=auth_app),
+        Host("mcp.localhost", app=mcp_host_app),
+    ]
+)
+#TODO, test if it is encessary
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=["auth.localhost", "mcp.localhost"]
+)
 
 def get_app():
-    return mcp.streamable_http_app()
+    return app

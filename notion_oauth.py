@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 
 import certifi
 import httpx
+from dotenv import load_dotenv
 
 NOTION_API_URL = "https://api.notion.com"
 NOTION_OAUTH_AUTHORIZE_URL = f"{NOTION_API_URL}/v1/oauth/authorize"
@@ -15,14 +16,15 @@ NOTION_OAUTH_TOKEN_URL = f"{NOTION_API_URL}/v1/oauth/token"
 NOTION_VERSION = "2022-06-28"
 USER_AGENT = "notion-mcp/1.0"
 
+load_dotenv()
+
 NOTION_CLIENT_ID = os.getenv("NOTION_CLIENT_ID", "sample-client-id")
 NOTION_CLIENT_SECRET = os.getenv("NOTION_CLIENT_SECRET", "sample-client-secret")
 NOTION_REDIRECT_URI = os.getenv(
     "NOTION_REDIRECT_URI",
-    "https://localhost:8443/oauth/notion/callback",
+    "https://auth.localhost:8443/notion/oauth/callback",
 )
 NOTION_OAUTH_OWNER = os.getenv("NOTION_OAUTH_OWNER", "user")
-
 DEFAULT_STATE_TTL_SECONDS = 600
 
 
